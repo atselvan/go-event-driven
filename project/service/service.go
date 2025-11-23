@@ -58,6 +58,8 @@ func (s Service) Run() error {
 	})
 
 	errGrp.Go(func() error {
+		<-s.msgRouter.Running()
+
 		err := s.echoRouter.Start(":8080")
 		if err != nil && !errors.Is(err, stdHTTP.ErrServerClosed) {
 			return err

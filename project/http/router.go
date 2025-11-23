@@ -13,6 +13,7 @@ func NewHttpRouter(pub message.Publisher) *echo.Echo {
 		Publisher: pub,
 	}
 
+	e.GET("/health", handler.Health)
 	e.POST("/tickets-confirmation", handler.PostTicketsConfirmation)
 
 	return e
