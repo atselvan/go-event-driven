@@ -3,7 +3,6 @@ package message
 import (
 	"context"
 	"fmt"
-	"os"
 
 	"github.com/ThreeDotsLabs/watermill"
 	"github.com/ThreeDotsLabs/watermill-redisstream/pkg/redisstream"
@@ -22,10 +21,6 @@ func (t Topic) String() string {
 	return string(t)
 }
 
-type Message struct {
-	TicketID string
-}
-
 type SpreadsheetsAPI interface {
 	AppendRow(ctx context.Context, sheetName string, row []string) error
 }
@@ -34,25 +29,13 @@ type ReceiptsService interface {
 	IssueReceipt(ctx context.Context, ticketId string) error
 }
 
-type Broker struct {
-	client *redis.Client
-	pub    message.Publisher
-
-	spreadsheetsAPI SpreadsheetsAPI
-	receiptsService ReceiptsService
+func NewClient(addr string) *redis.Client {
+	return redis.NewClient(&redis.Options{
+		Addr: addr,
+	})
 }
 
-func NewBroker(
-	spreadsheetsAPI SpreadsheetsAPI,
-	receiptsService ReceiptsService,
-) (*Broker, error) {
-	rdb := redis.NewClient(
-		&redis.Options{
-			Addr: os.Getenv("REDIS_ADDR"),
-		},
-	)
-	logger := watermill.NewSlogLogger(nil)
-
+func NewPublisher(rdb *redis.Client, logger watermill.LoggerAdapter) (message.Publisher, error) {
 	pub, err := redisstream.NewPublisher(
 		redisstream.PublisherConfig{
 			Client: rdb,
@@ -62,40 +45,23 @@ func NewBroker(
 	if err != nil {
 		return nil, err
 	}
-
-	return &Broker{
-		client:          rdb,
-		pub:             pub,
-		spreadsheetsAPI: spreadsheetsAPI,
-		receiptsService: receiptsService,
-	}, nil
+	return pub, err
 }
 
-func (b *Broker) Send(m Message) error {
-	msg := message.NewMessage(watermill.NewUUID(), []byte(m.TicketID))
-
-	if err := b.pub.Publish(TopicIssueReceipt.String(), msg); err != nil {
-		return err
-	}
-
-	if err := b.pub.Publish(TopicAppendToTracker.String(), msg); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (b *Broker) Run(ctx context.Context) error {
-	logger := watermill.NewSlogLogger(nil)
-
+func NewRouter(
+	rdb *redis.Client,
+	spreadsheetsAPI SpreadsheetsAPI,
+	receiptsService ReceiptsService,
+	logger watermill.LoggerAdapter,
+) (*message.Router, error) {
 	sub, err := redisstream.NewSubscriber(
 		redisstream.SubscriberConfig{
-			Client: b.client,
+			Client: rdb,
 		},
 		logger,
 	)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
 	router := message.NewDefaultRouter(logger)
@@ -104,42 +70,35 @@ func (b *Broker) Run(ctx context.Context) error {
 		"issue-receipt-handler",
 		TopicIssueReceipt.String(),
 		sub,
-		b.issueReceiptHandler(ctx),
+		issueReceiptHandler(receiptsService),
 	)
 
 	router.AddConsumerHandler(
 		"append-to-tracker-handler",
 		TopicAppendToTracker.String(),
 		sub,
-		b.appendToTrackerHandler(ctx),
+		appendToTrackerHandler(spreadsheetsAPI),
 	)
 
-	go func() {
-		err := router.Run(context.Background())
-		if err != nil {
-			panic(err)
-		}
-	}()
-
-	return nil
+	return router, nil
 }
 
-func (b *Broker) issueReceiptHandler(ctx context.Context) message.NoPublishHandlerFunc {
+func issueReceiptHandler(srv ReceiptsService) message.NoPublishHandlerFunc {
 	return func(msg *message.Message) error {
 		ticketID := string(msg.Payload)
 		fmt.Printf("Processing message: topic: %s msg-payload: %v\n", TopicIssueReceipt, ticketID)
-		if err := b.receiptsService.IssueReceipt(ctx, ticketID); err != nil {
+		if err := srv.IssueReceipt(msg.Context(), ticketID); err != nil {
 			return err
 		}
 		return nil
 	}
 }
 
-func (b *Broker) appendToTrackerHandler(ctx context.Context) message.NoPublishHandlerFunc {
+func appendToTrackerHandler(srv SpreadsheetsAPI) message.NoPublishHandlerFunc {
 	return func(msg *message.Message) error {
 		ticketID := string(msg.Payload)
 		fmt.Printf("Processing message: topic: %s msg-payload: %v\n", TopicAppendToTracker, ticketID)
-		if err := b.spreadsheetsAPI.AppendRow(ctx, "tickets-to-print", []string{ticketID}); err != nil {
+		if err := srv.AppendRow(msg.Context(), "tickets-to-print", []string{ticketID}); err != nil {
 			return err
 		}
 		return nil

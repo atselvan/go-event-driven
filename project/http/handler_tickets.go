@@ -4,6 +4,8 @@ import (
 	"net/http"
 	"tickets/message"
 
+	"github.com/ThreeDotsLabs/watermill"
+	watermillMessage "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/labstack/echo/v4"
 )
 
@@ -19,11 +21,13 @@ func (h Handler) PostTicketsConfirmation(c echo.Context) error {
 	}
 
 	for _, ticket := range request.Tickets {
-		msg := message.Message{
-			TicketID: ticket,
+		msg := watermillMessage.NewMessage(watermill.NewUUID(), []byte(ticket))
+
+		if err := h.Publisher.Publish(message.TopicIssueReceipt.String(), msg); err != nil {
+			return err
 		}
 
-		if err := h.broker.Send(msg); err != nil {
+		if err := h.Publisher.Publish(message.TopicAppendToTracker.String(), msg); err != nil {
 			return err
 		}
 	}

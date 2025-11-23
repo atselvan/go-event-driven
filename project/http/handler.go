@@ -1,9 +1,9 @@
 package http
 
 import (
-	"tickets/message"
+	"github.com/ThreeDotsLabs/watermill/message"
 )
 
 type Handler struct {
-	broker *message.Broker
+	Publisher message.Publisher
 }

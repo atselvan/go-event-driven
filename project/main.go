@@ -1,9 +1,9 @@
 package main
 
 import (
-	"context"
 	"log/slog"
 	"os"
+	"tickets/message"
 
 	"github.com/ThreeDotsLabs/go-event-driven/v2/common/clients"
 	"github.com/ThreeDotsLabs/go-event-driven/v2/common/log"
@@ -20,15 +20,17 @@ func main() {
 		panic(err)
 	}
 
+	rdb := message.NewClient(os.Getenv("REDIS_ADDR"))
+
 	spreadsheetsAPI := adapters.NewSpreadsheetsAPIClient(apiClients)
 	receiptsService := adapters.NewReceiptsServiceClient(apiClients)
 
-	srv, err := service.New(spreadsheetsAPI, receiptsService)
+	srv, err := service.New(rdb, spreadsheetsAPI, receiptsService)
 	if err != nil {
 		panic(err)
 	}
-	
-	err = srv.Run(context.Background())
+
+	err = srv.Run()
 	if err != nil {
 		panic(err)
 	}
