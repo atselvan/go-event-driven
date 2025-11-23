@@ -1,0 +1,32 @@
+version: "3.9"
+
+services:
+  gateway:
+    image: threedotslabs/event-driven-gateway-v2:latest
+    pull_policy: always
+    ports:
+      - "8888:8080"
+    environment:
+      SOLUTION_BASE_URL: "http://host.docker.internal:8080/"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - app_net
+
+  redis:
+    image: redis:8.4.0-alpine
+    ports:
+      - "6379:6379"
+    networks:
+      - app_net
+
+  redis-insight:
+    image: redis/redisinsight:latest
+    ports:
+      - "5540:5540"
+    networks:
+      - app_net
+
+networks:
+  app_net:
+    driver: bridge
