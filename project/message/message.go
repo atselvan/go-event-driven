@@ -88,10 +88,9 @@ func (b *Broker) Send(m Message) error {
 func (b *Broker) Run(ctx context.Context) error {
 	logger := watermill.NewSlogLogger(nil)
 
-	issueReceiptSub, err := redisstream.NewSubscriber(
+	sub, err := redisstream.NewSubscriber(
 		redisstream.SubscriberConfig{
-			Client:        b.client,
-			ConsumerGroup: TopicIssueReceipt.String(),
+			Client: b.client,
 		},
 		logger,
 	)
@@ -99,56 +98,50 @@ func (b *Broker) Run(ctx context.Context) error {
 		return err
 	}
 
-	msgs, err := issueReceiptSub.Subscribe(context.Background(), TopicIssueReceipt.String())
-	if err != nil {
-		return err
-	}
+	router := message.NewDefaultRouter(logger)
 
-	go b.processIssueReceiptMsg(ctx, msgs)
-
-	appendToTrackerSub, err := redisstream.NewSubscriber(
-		redisstream.SubscriberConfig{
-			Client:        b.client,
-			ConsumerGroup: TopicAppendToTracker.String(),
-		},
-		logger,
+	router.AddConsumerHandler(
+		"issue-receipt-handler",
+		TopicIssueReceipt.String(),
+		sub,
+		b.issueReceiptHandler(ctx),
 	)
-	if err != nil {
-		return err
-	}
 
-	msgs, err = appendToTrackerSub.Subscribe(context.Background(), TopicAppendToTracker.String())
-	if err != nil {
-		panic(err)
-	}
+	router.AddConsumerHandler(
+		"append-to-tracker-handler",
+		TopicAppendToTracker.String(),
+		sub,
+		b.appendToTrackerHandler(ctx),
+	)
 
-	go b.processAppendToTrackerMsg(ctx, msgs)
+	go func() {
+		err := router.Run(context.Background())
+		if err != nil {
+			panic(err)
+		}
+	}()
 
 	return nil
 }
 
-func (b *Broker) processIssueReceiptMsg(ctx context.Context, msgs <-chan *message.Message) {
-	for msg := range msgs {
+func (b *Broker) issueReceiptHandler(ctx context.Context) message.NoPublishHandlerFunc {
+	return func(msg *message.Message) error {
 		ticketID := string(msg.Payload)
-
 		fmt.Printf("Processing message: topic: %s msg-payload: %v\n", TopicIssueReceipt, ticketID)
-
 		if err := b.receiptsService.IssueReceipt(ctx, ticketID); err != nil {
-			msg.Nack()
+			return err
 		}
-		msg.Ack()
+		return nil
 	}
 }
 
-func (b *Broker) processAppendToTrackerMsg(ctx context.Context, msgs <-chan *message.Message) {
-	for msg := range msgs {
+func (b *Broker) appendToTrackerHandler(ctx context.Context) message.NoPublishHandlerFunc {
+	return func(msg *message.Message) error {
 		ticketID := string(msg.Payload)
-
 		fmt.Printf("Processing message: topic: %s msg-payload: %v\n", TopicAppendToTracker, ticketID)
-
 		if err := b.spreadsheetsAPI.AppendRow(ctx, "tickets-to-print", []string{ticketID}); err != nil {
-			msg.Nack()
+			return err
 		}
-		msg.Ack()
+		return nil
 	}
 }
