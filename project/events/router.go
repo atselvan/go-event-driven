@@ -68,7 +68,7 @@ func NewRouter(
 	}
 
 	router := message.NewDefaultRouter(logger)
-	useMiddleware(router)
+	useMiddleware(router, logger)
 
 	handler := NewHandler(spreadsheetsAPI, receiptsService)
 

@@ -45,6 +45,7 @@ func (h Handler) PostTicketsStatus(c echo.Context) error {
 
 			msg := watermillMessage.NewMessage(event.Header.ID, payload)
 			msg.Metadata.Set("correlation_id", c.Request().Header.Get("Correlation-ID"))
+			msg.Metadata.Set("type", entities.EventTicketBookingConfirmed.String())
 
 			if err := h.Publisher.Publish(entities.EventTicketBookingConfirmed.String(), msg); err != nil {
 				return err
@@ -64,6 +65,7 @@ func (h Handler) PostTicketsStatus(c echo.Context) error {
 
 			msg := watermillMessage.NewMessage(event.Header.ID, payload)
 			msg.Metadata.Set("correlation_id", c.Request().Header.Get("Correlation-ID"))
+			msg.Metadata.Set("type", entities.EventTicketBookingCanceled.String())
 
 			if err := h.Publisher.Publish(entities.EventTicketBookingCanceled.String(), msg); err != nil {
 				return err
