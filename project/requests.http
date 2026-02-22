@@ -1,0 +1,32 @@
+###
+GET http://localhost:8080/health
+Content-Type: application/json
+
+###
+POST http://localhost:8080/tickets-status
+Content-Type: application/json
+
+{
+  "tickets": [
+    {
+      "ticket_id": "ticket-1",
+      "status": "confirmed",
+      "customer_email": "user1@example.com",
+      "price": {
+        "amount": "50.00",
+        "currency": "EUR"
+      }
+    },
+    {
+      "ticket_id": "ticket-2",
+      "status": "confirmed",
+      "customer_email": "user2@example.com",
+      "price": {
+        "amount": "100.00",
+        "currency": "EUR"
+      }
+    }
+  ]
+}
+
+

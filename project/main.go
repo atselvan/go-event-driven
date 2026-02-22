@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"log/slog"
+	"net/http"
 	"os"
-	"tickets/message"
+	"tickets/events"
 
 	"github.com/ThreeDotsLabs/go-event-driven/v2/common/clients"
 	"github.com/ThreeDotsLabs/go-event-driven/v2/common/log"
@@ -15,12 +17,18 @@ import (
 func main() {
 	log.Init(slog.LevelInfo)
 
-	apiClients, err := clients.NewClients(os.Getenv("GATEWAY_ADDR"), nil)
+	apiClients, err := clients.NewClients(
+		os.Getenv("GATEWAY_ADDR"),
+		func(ctx context.Context, req *http.Request) error {
+			req.Header.Set("Correlation-ID", log.CorrelationIDFromContext(ctx))
+			return nil
+		},
+	)
 	if err != nil {
 		panic(err)
 	}
 
-	rdb := message.NewClient(os.Getenv("REDIS_ADDR"))
+	rdb := events.NewClient(os.Getenv("REDIS_ADDR"))
 
 	spreadsheetsAPI := adapters.NewSpreadsheetsAPIClient(apiClients)
 	receiptsService := adapters.NewReceiptsServiceClient(apiClients)

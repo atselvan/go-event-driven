@@ -1,34 +1,75 @@
 package http
 
 import (
+	"encoding/json"
+	"fmt"
 	"net/http"
-	"tickets/message"
+	"tickets/entities"
 
-	"github.com/ThreeDotsLabs/watermill"
 	watermillMessage "github.com/ThreeDotsLabs/watermill/message"
 	"github.com/labstack/echo/v4"
 )
 
-type ticketsConfirmationRequest struct {
-	Tickets []string `json:"tickets"`
+type TicketsStatusRequest struct {
+	Tickets []TicketStatusRequest `json:"tickets"`
 }
 
-func (h Handler) PostTicketsConfirmation(c echo.Context) error {
-	var request ticketsConfirmationRequest
+type TicketStatusRequest struct {
+	TicketID      string         `json:"ticket_id"`
+	Status        string         `json:"status"`
+	Price         entities.Money `json:"price"`
+	CustomerEmail string         `json:"customer_email"`
+}
+
+func (h Handler) PostTicketsStatus(c echo.Context) error {
+	var request TicketsStatusRequest
 	err := c.Bind(&request)
 	if err != nil {
 		return err
 	}
 
 	for _, ticket := range request.Tickets {
-		msg := watermillMessage.NewMessage(watermill.NewUUID(), []byte(ticket))
+		switch ticket.Status {
+		case entities.TicketStatusConfirmed.String():
+			event := entities.TicketBookingConfirmed{
+				Header:        entities.NewMessageHeader(),
+				TicketID:      ticket.TicketID,
+				CustomerEmail: ticket.CustomerEmail,
+				Price:         ticket.Price,
+			}
 
-		if err := h.Publisher.Publish(message.TopicIssueReceipt.String(), msg); err != nil {
-			return err
-		}
+			payload, err := json.Marshal(event)
+			if err != nil {
+				return err
+			}
 
-		if err := h.Publisher.Publish(message.TopicAppendToTracker.String(), msg); err != nil {
-			return err
+			msg := watermillMessage.NewMessage(event.Header.ID, payload)
+			msg.Metadata.Set("correlation_id", c.Request().Header.Get("Correlation-ID"))
+
+			if err := h.Publisher.Publish(entities.EventTicketBookingConfirmed.String(), msg); err != nil {
+				return err
+			}
+		case entities.TicketStatusCancelled.String():
+			event := entities.TicketBookingCanceled{
+				Header:        entities.NewMessageHeader(),
+				TicketID:      ticket.TicketID,
+				CustomerEmail: ticket.CustomerEmail,
+				Price:         ticket.Price,
+			}
+
+			payload, err := json.Marshal(event)
+			if err != nil {
+				return err
+			}
+
+			msg := watermillMessage.NewMessage(event.Header.ID, payload)
+			msg.Metadata.Set("correlation_id", c.Request().Header.Get("Correlation-ID"))
+
+			if err := h.Publisher.Publish(entities.EventTicketBookingCanceled.String(), msg); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("unknown ticket status: %s", ticket.Status)
 		}
 	}
 

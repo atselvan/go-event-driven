@@ -8,7 +8,7 @@ import (
 	stdHTTP "net/http"
 	"os"
 	"os/signal"
-	"tickets/message"
+	"tickets/events"
 
 	"github.com/ThreeDotsLabs/watermill"
 	watermillMessage "github.com/ThreeDotsLabs/watermill/message"
@@ -26,17 +26,17 @@ type Service struct {
 
 func New(
 	rdb *redis.Client,
-	spreadsheetsAPI message.SpreadsheetsAPI,
-	receiptsService message.ReceiptsService,
+	spreadsheetsAPI events.SpreadsheetsAPI,
+	receiptsService events.ReceiptsService,
 ) (*Service, error) {
 	logger := watermill.NewSlogLogger(slog.Default())
 
-	publisher, err := message.NewPublisher(rdb, logger)
+	publisher, err := events.NewPublisher(rdb, logger)
 	if err != nil {
 		return nil, err
 	}
 
-	router, err := message.NewRouter(rdb, spreadsheetsAPI, receiptsService, logger)
+	router, err := events.NewRouter(rdb, spreadsheetsAPI, receiptsService, logger)
 	if err != nil {
 		return nil, err
 	}
